@@ -14,7 +14,7 @@ import traceback
 class Failure(Exception):
     def __init__( self, errormsg ):
         self.message = errormsg
-        self.errorjson = json.dumps( {"error": errormsg} )
+        self.errorjson = json.dumps( { "status": "error", "error": errormsg} )
 
     def __str__( self ):
         return self.message
@@ -86,7 +86,8 @@ class DownloadFile(UploadConnector):
             web.header( 'Content-Type', 'application/json' )
             strerr = io.StringIO()
             traceback.print_exc( file=strerr )
-            return json.dumps( { "error": f'Exception in DownloadFile: {str(ex)}',
+            return json.dumps( { "status": "error",
+                                 "error": f'Exception in DownloadFile: {str(ex)}',
                                  "traceback": strerr.getValue() } )
 
 # ======================================================================
@@ -116,8 +117,40 @@ class UploadFile(UploadConnector):
         except Exception as ex:
             strerr = io.StringIO()
             traceback.print_exc( file=strerr )
-            return json.dumps( { "error": f'Exception in UploadFile: {str(ex)}',
+            return json.dumps( { "status": "error",
+                                 "error": f'Exception in UploadFile: {str(ex)}',
                                  "traceback": strerr.getvalue() } )
+
+# ======================================================================
+
+class DeleteFile(UploadConnector):
+    def do_the_things( self ):
+        web.header( 'Content-Type', 'application/json' )
+        try:
+            data = self.init()
+            if not data["overwrite"]:
+                raise Failure( f"Not deleting file, overwrite is False" )
+            if not data["path"].exists():
+                raise Failure( f"File doesn't exist: {str(data['path'])}" )
+            if data["path"].is_dir():
+                raise Failure( f"{str(data['path'])} is a directory" )
+            data["path"].unlink()
+            return json.dumps(
+                {
+                    "status": "File deleted",
+                    "filename": data["path"].name,
+                    "path": str(data["path"])
+                }
+            )
+        except Failure as ex:
+            return ex.errorjson
+        except Exception as ex:
+            strerr = io.StringIO()
+            traceback.print_exc( file=strerr )
+            return json.dumps( { "status": "error",
+                                 "error": f'Exception in DeleteFile: {str(ex)}',
+                                 "traceback": strerr.getvalue() } )
+
 
 # ======================================================================
 
@@ -152,6 +185,7 @@ class MakeLink(UploadConnector):
 urls = ( "/upload", "UploadFile",
          "/download", "DownloadFile",
          "/makelink", "MakeLink",
+         "/delete", "DeleteFile",
          "/", "UploadConnector"
          )
 web.config.session_parameters["samesite"] = "lax"
