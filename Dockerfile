@@ -1,6 +1,9 @@
 FROM rknop/devuan-chimaera-rknop
 MAINTAINER Rob Knop <raknop@lbl.gov>
 
+ARG UID=95089
+ARG GID=45703
+
 SHELL ["/bin/bash", "-c"]
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -12,8 +15,9 @@ RUN /sbin/setcap 'cap_net_bind_service=+ep' /usr/sbin/apache2
 
 RUN pip3 install web.py
 
+# This needs to get replaced with a bind mound at runtime
 RUN mkdir /secrets
-RUN echo "testing" >> /secrets/token
+RUN echo "testing testing" >> /secrets/connector_tokens
 RUN mkdir /dest
 
 RUN ln -s ../mods-available/socache_shmcb.load /etc/apache2/mods-enabled/socache_shmcb.load
@@ -41,11 +45,11 @@ RUN chmod a+rwx /var/lock/apache2
 RUN chmod -R a+rx /etc/ssl/private
 RUN mkdir -p /var/log/apache2
 RUN chmod -R a+rwx /var/log/apache2
-RUN chown 95089:45703 /dest
+RUN chown $UID:$GID /dest
 
 COPY connector.py /var/www/html/
 
-USER 95089:45703
+USER $UID:$GID
 RUN apachectl start
 
 CMD [ "apachectl", "-D", "FOREGROUND", "-D", "APACHE_CONFDIR=/etc/apache2" ]

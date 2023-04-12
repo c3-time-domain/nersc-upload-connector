@@ -4,10 +4,23 @@
 import sys
 import os
 import io
+import re
 import web
 import json
 import pathlib
 import traceback
+import logging
+import hashlib
+
+_logger = logging.getLogger(__name__)
+if not _logger.hasHandlers():
+    _logout = logging.StreamHandler( sys.stderr )
+    _logger.addHandler( _logout )
+    _formatter = logging.Formatter( f'[%(asctime)s - %(levelname)s] - %(message)s',
+                                    datefmt='%Y-%m-%d %H:%M:%S' )
+    _logout.setFormatter( _formatter )
+    _logger.setLevel( logging.INFO )
+
 
 # ======================================================================
 
@@ -38,14 +51,32 @@ class UploadConnector(object):
     
     def init( self ):
         try:
-            with open("/secrets/token") as ifp:
-                token = ifp.readline().strip()
+            regex = re.compile( "^([^ ]+) *(.*)$" )
+            pathtokens = {}
+            with open("/secrets/connector_tokens") as ifp:
+                lines = ifp.readlines()
+                for line in lines:
+                    line = line.strip()
+                    match = regex.search( line )
+                    if match is None:
+                        _logger.warn( f"Failed to parse path/token line \"{line}\" )" )
+                    else:
+                        pathtokens[ match[1] ] = match[2]
             data = web.input( fileinfo={}, path=None, targetoflink=None, mode=None, dirmode=None,
                               overwrite=False, token=None )
-            if data["token"] != token:
-                raise Failure( "Invalid token" )
             if data["path"] is None:
                 raise Failure( "No file path specified" )
+            ok = False
+            for path, token in pathtokens.items():
+                if data["path"][0:len(path)] == path:
+                    if token != data["token"]:
+                        raise Failure( f"Invalid token for {data['path']}" )
+                    else:
+                        ok = True
+                        break
+            if not ok:
+                raise Failure( f"File {data['path']} is not in a known path." )
+
             data["path"] = self.storage / data["path"]
             if data["targetoflink"] is not None:
                 data["targetoflink"] = self.storage / data["targetoflink"]
@@ -104,12 +135,21 @@ class UploadFile(UploadConnector):
                 ofp.write( data["fileinfo"].value )
             if data["mode"] is not None:
                 data["path"].chmod( mode )
+            md5 = hashlib.md5()
+            with open( data["path"], "rb" ) as ifp:
+                md5.update( ifp.read() )
+            md5sum = md5.hexdigest()
+            if data["md5sum"] is not None:
+                if md5sum != data["md5sum"]:
+                    data["path"].unlink()
+                    raise Failure( f"md5sum of file doesn't match passed md5sum, file not written" )
             return json.dumps(
                 {
                     "status": "File uploaded",
                     "filename": data["path"].name,
                     "path": str(data["path"]),
-                    "length": len( data["fileinfo"].value )
+                    "length": len( data["fileinfo"].value ),
+                    "md5sum": md5sum
                 }
             )
         except Failure as ex:
