@@ -70,6 +70,8 @@ class UploadConnector(object):
             for path, token in pathtokens.items():
                 if data["path"][0:len(path)] == path:
                     if token != data["token"]:
+                        _logger.error( f"Was passed token {data['token']} for path {data['path']}, "
+                                       f"expected {token} for {path}" )
                         raise Failure( f"Invalid token for {data['path']}" )
                     else:
                         ok = True
@@ -106,7 +108,7 @@ class DownloadFile(UploadConnector):
             if not data["path"].is_file():
                 raise Failure( f'No such file {str(data["path"])}' )
             web.header( 'Content-Type', 'application/octet-stream' )
-            web.header( 'Content-Disposition', f'attachment; filename="{filepath.name}"' )
+            web.header( 'Content-Disposition', f'attachment; filename="{data["path"].name}"' )
             with open( data["path"], "rb" ) as ifp:
                 filedata = ifp.read()
             return filedata
@@ -119,7 +121,7 @@ class DownloadFile(UploadConnector):
             traceback.print_exc( file=strerr )
             return json.dumps( { "status": "error",
                                  "error": f'Exception in DownloadFile: {str(ex)}',
-                                 "traceback": strerr.getValue() } )
+                                 "traceback": strerr.getvalue() } )
 
 # ======================================================================
 
@@ -134,12 +136,12 @@ class UploadFile(UploadConnector):
             with open(data["path"], "wb") as ofp:
                 ofp.write( data["fileinfo"].value )
             if data["mode"] is not None:
-                data["path"].chmod( mode )
+                data["path"].chmod( int( data["mode"] ) )
             md5 = hashlib.md5()
             with open( data["path"], "rb" ) as ifp:
                 md5.update( ifp.read() )
             md5sum = md5.hexdigest()
-            if data["md5sum"] is not None:
+            if "md5sum" in data and data["md5sum"] is not None:
                 if md5sum != data["md5sum"]:
                     data["path"].unlink()
                     raise Failure( f"md5sum of file doesn't match passed md5sum, file not written" )
