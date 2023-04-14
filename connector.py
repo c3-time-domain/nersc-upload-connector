@@ -97,7 +97,7 @@ class UploadConnector(object):
             if dirmode is None:
                 dirmode = 0o755
             direc.mkdir( parents=True, exist_ok=True )
-            direc.chmod( dirmode )
+            direc.chmod( int(dirmode) )
         
 # ======================================================================
 
@@ -144,7 +144,8 @@ class UploadFile(UploadConnector):
             if "md5sum" in data and data["md5sum"] is not None:
                 if md5sum != data["md5sum"]:
                     data["path"].unlink()
-                    raise Failure( f"md5sum of file doesn't match passed md5sum, file not written" )
+                    raise Failure( f"md5sum of file {md5sum} doesn't match "
+                                   f"passed md5sum {data['md5sum']}, file not written" )
             return json.dumps(
                 {
                     "status": "File uploaded",
