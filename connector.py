@@ -101,6 +101,32 @@ class UploadConnector(object):
         
 # ======================================================================
 
+class GetFileInfo(UploadConnector):
+    def do_the_things( self ):
+        web.header( 'Content-Type', 'application/json' )
+        try:
+            data = self.init()
+            if not data["path"].is_file():
+                raise Failure( f'No such file {str(data["path"])}' )
+            md5 = hashlib.md5()
+            with open( data["path"], "rb" ) as ifp:
+                md5.update( ifp.read() )
+            stat = data["path"].stat( follow_symlinks=True )
+            retval = { "serverpath": str(data["path"]),
+                       "size": stat.st_size,
+                       "md5sum": md5.hexdigest() }
+            return json.dumps( retval )
+        except Failure as ex:
+            return ex.errorjson
+        except Exception as ex:
+            strerr = io.StringIO()
+            traceback.print_exc( file=strerr )
+            return json.dumps( { "status": "error",
+                                 "error": f'Exception in GetFileInfo: {str(ex)}',
+                                 "traceback": strerr.getvalue() } )
+                
+# ======================================================================
+
 class DownloadFile(UploadConnector):
     def do_the_things( self ):
         try:
@@ -226,6 +252,7 @@ class MakeLink(UploadConnector):
 # ======================================================================
 
 urls = ( "/upload", "UploadFile",
+         "/getfileinfo", "GetFileInfo",
          "/download", "DownloadFile",
          "/makelink", "MakeLink",
          "/delete", "DeleteFile",
