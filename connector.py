@@ -53,7 +53,7 @@ class UploadConnector(object):
         try:
             regex = re.compile( "^([^ ]+) *(.*)$" )
             pathtokens = {}
-            with open("/secrets/connector_tokens") as ifp:
+            with open("/run/secrets/connector_tokens") as ifp:
                 lines = ifp.readlines()
                 for line in lines:
                     line = line.strip()

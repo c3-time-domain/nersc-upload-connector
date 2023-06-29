@@ -1,0 +1,30 @@
+version: "3.3"
+
+services:
+  archive-server:
+    image: rknop/upload-connector
+    build:
+      context: ../
+    healthcheck:
+      test: netcat -w 1 localhost 8080 || exit 1
+      interval: 5s
+      timeout: 10s
+      retries: 5
+    volumes:
+      archive-storage:/dest
+    secrets:
+      - connector_tokens
+
+  shellhost:
+    depends_on:
+      archive-server:
+        condition: service_healthy
+    image: rknop/upload-connector-test
+    build:
+      context: ./
+      dockerfile: Dockerfile
+
+secrets:
+  connector_tokens:
+    file: connector_tokens.txt
+    
