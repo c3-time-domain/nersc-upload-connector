@@ -111,7 +111,7 @@ class GetFileInfo(UploadConnector):
             md5 = hashlib.md5()
             with open( data["path"], "rb" ) as ifp:
                 md5.update( ifp.read() )
-            stat = data["path"].stat( follow_symlinks=True )
+            stat = data["path"].stat()
             retval = { "serverpath": str(data["path"]),
                        "size": stat.st_size,
                        "md5sum": md5.hexdigest() }
