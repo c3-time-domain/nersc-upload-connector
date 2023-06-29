@@ -63,9 +63,11 @@ class UploadConnector(object):
                     else:
                         pathtokens[ match[1] ] = match[2]
             data = web.input( fileinfo={}, path=None, targetoflink=None, mode=None, dirmode=None,
-                              overwrite=False, token=None )
+                              overwrite=0, token=None )
             if data["path"] is None:
                 raise Failure( "No file path specified" )
+            # POST data seems to be all strings, so gotta get overwrite back into an int
+            data["overwrite"] = int( data["overwrite"] )
             ok = False
             for path, token in pathtokens.items():
                 if data["path"][0:len(path)] == path:

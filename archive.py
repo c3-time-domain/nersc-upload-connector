@@ -70,7 +70,7 @@ class Archive:
     # ======================================================================
 
     def _retry_request( self, endpoint, data={}, files=None, isjson=True, downloadfile=None,
-                        retries=5, sleeptime=2 ):
+                        retries=5, sleeptime=2, expectederror=None ):
         """Send a request to the archive server with retries.
 
         endpoint - the part of the URL after self.url
@@ -80,13 +80,19 @@ class Archive:
         downloadfile - path of binary file to download, or None if none is expected (default None)
         retries - number of times to retry if there's a communications failure (default 5)
         sleeptime - time to sleep (in seconds) after a failure before retrying (default 2)
-        verify - False if we don't bother verifying the certificate, true otherwise (default from config)
+        expectederror - see below
 
         If succesful, will return the data structure loaded from the
         returned json (if isjson is True) or True (if downloadfile is
         not None).
 
-        If unsuccesful, will raise an exception.
+        If the first try returns an error response (so, a valid return
+        from the server, but with a json encoded dictionary that has an
+        "error" field), and if expectederror is not None, and the
+        beginning of the value of the "error" field of the returned
+        dictionary matches expectederror, returns None.
+
+        Otherwise, will raise an exception.
 
         """
         
@@ -96,47 +102,56 @@ class Archive:
             
         countdown = retries
         while countdown >= 0:
+            res = None
             try:
                 res = requests.post( f"{url}", data=data, files=files, verify=self.verify_cert )
+            except Exception as ex:
+                self.logger.warning( f"Got exception {ex} trying to contact {url} with data {data}" )
+            else:
                 if res.status_code != 200:
-                    raise RuntimeError( f"Got status_code={res.status_code} from {url} with data {data}" )
+                    self.logger.warning( f"Got status_code={res.status_code} from {url} with data {data}" )
                 if isjson:
                     if res.headers['content-type'] != 'application/json':
-                        raise RuntimeError( f"Server returned {res.headers['content-type']}, expected json" )
-                    resval = json.loads( res.text )
-                    if "error" in resval:
-                        raise RuntimeError( f"Got error response {resval['error']} from {url} with data {data}\n"
-                                            f"{resval['traceback'] if 'traceback' in resval else '(No traceback)'}" )
-                    return resval
+                        self.logger.warning( f"Server returned {res.headers['content-type']}, expected json" )
+                    else:
+                        resval = json.loads( res.text )
+                        if "error" in resval:
+                            if ( ( expectederror is not None) and
+                                 ( resval['error'][:len(expectederror)] == expectederror ) ):
+                                return None
+                            if resval['error'][0:13] == 'Invalid token':
+                                self.logger.error( f"Invalid token for {url}" )
+                                raise RuntimeError( f"Invalid token for archive server" )
+                            else:
+                                tb = resval['traceback'] if 'traceback' in resval else '(No traceback)'
+                                self.logger.warning( f"Got error response {resval['error']} from {url} "
+                                                     f"with data {data}\n{tb}" )
+                        else:
+                            return resval
                 elif downloadfile is not None:
                     if res.headers['content-type'] != 'application/octet-stream':
-                        raise RuntimeError( f"Server returned {res.headers['content-type']}, "
-                                            f"expected an octet stream" )
-                    with open( downloadfile, "wb" ) as ofp:
-                        ofp.write( res.content )
-                    return True
+                        self.logger.warning( f"Server returned {res.headers['content-type']}, "
+                                             f"expected an octet stream" )
+                    else:
+                        with open( downloadfile, "wb" ) as ofp:
+                            ofp.write( res.content )
+                        return True
                 else:
-                    countdown = -1
                     raise RuntimeError( "This should never happen." )
-            except Exception as e:
-                countdown -= 1
-                if countdown >= 0:
-                    self.logger.warning( f"Exception trying {url} with data={data}; "
-                                         f"will sleep {sleeptime}s and retry; "
-                                         f"Exception: {str(e)}" )
-                    try:
-                        res.close()
-                    except Exception as junk:
-                        pass
-                    time.sleep( sleeptime )
-                else:
-                    try:
-                        res.close()
-                    except Exception as junk:
-                        pass
-                    raise RuntimeError( f"Repeated exceptions trying archive url {url}" )
+            finally:
+                try:
+                    res.close()
+                except Exception:
+                    pass
+                    
+            # If we haven't returned, then it's an error of some sort, and we should keep counting down
+            countdown -= 1
+            if countdown >= 0:
+                self.logger.warning( f"Failed to post to {url} with data {data}; "
+                                     f"will sleep {sleeptime}s and retry." )
 
-    
+        raise RuntimeError( f"Repeated failures trying to post to {url} with data {data}" )
+                
     # ======================================================================
         
     def upload( self, localpath, remotedir=None, remotename=None, overwrite=True ):
@@ -173,7 +188,8 @@ class Archive:
                 if overwrite:
                     destpath.unlink()
                 else:
-                    raise RuntimeError( f"Failed to copy to archive; {destpath} exists and overwrite is False" )
+                    raise RuntimeError( f"Failed to copy, {destpath} already exists on archive "
+                                        f"and overwrite was False" )
             if destpath.parent.exists() and not destpath.parent.is_dir():
                 raise RuntimeError( f"Failed to copy to archive; destination directory {destpath.parent} "
                                     f"exists, but is not a directory!" )
@@ -189,7 +205,7 @@ class Archive:
                                     f"md5sum {md5sum}, which doesn't match source {localmd5}" )
 
         if self.url is not None:
-            data = { "overwrite": overwrite,
+            data = { "overwrite": int(overwrite),
                      "path": str(serverpath),
                      "dirmode": 0o755,
                      "mode": 0o644,
@@ -198,7 +214,11 @@ class Archive:
             ifp = open( localpath, "rb" )
             filedata = { "fileinfo": ifp }
             try:
-                resval = self._retry_request( f"upload", data=data, files=filedata )
+                resval = self._retry_request( f"upload", data=data, files=filedata,
+                                              expectederror='File already exists' )
+                if ( resval is None ) and ( not overwrite ):
+                    raise RuntimeError( f"Failed to upload, {serverpath} already exists on archive "
+                                        f"and overwrite was False" )
             finally:
                 ifp.close()
             md5sum = resval['md5sum']
@@ -245,22 +265,8 @@ class Archive:
 
         else:
             data = { "path": str( self.path_base / serverpath ), "token": self.token }
-            try:
-                res = self._retry_request( "getfileinfo", data=data )
-                return res
-            except RuntimeError as ex:
-                # OK, this is a bit ugly.  I'm going to parse the exception text,
-                # to see if it's the special case of the file not found on the
-                # server.  This requires internal knowledge of the server's
-                # exception coding, which is unpleasant.  I considered adding
-                # specific code for this to _retry_request, but that made that
-                # routine (even) uglier, and really it's only stuff needed here.
-                match = re.search( '^Got error response No such file', str(ex) )
-                if match is not None:
-                    return None
-                raise ex
-
-        raise RuntimeError( "This should never happen." )
+            res = self._retry_request( "getfileinfo", data=data, expectederror='No such file' )
+            return res
             
     # ======================================================================
 
@@ -286,7 +292,7 @@ class Archive:
             archivepath = self.path_base / serverpath
             data = { "path": str(archivepath),
                      "token": self.token,
-                     "overwrite": True,
+                     "overwrite": 1,
                      "okifmissing": okifmissing
                     }
             self._retry_request( "delete", data=data )
@@ -341,12 +347,12 @@ class Archive:
                 if clobbermismatch:
                     localpath.unlink()
                 else:
-                    raise RuntimeError( "Local file {localpath} exists, but doesn't match md5sum expected "
-                                        "from server.  Server md5sum: {md5sum}, local: {localmd5}" )
+                    raise RuntimeError( "Local file {localpath} exists but md5sum doesn't match "
+                                        "{srcpath} on archive; local={localmd5}, archive={md5sum}" )
 
             # If we get this far and localfile exists, then we know we don't want to overwrite it
-            if not localfile.exists():
-                shutil.copy2( serverpath, localpath )
+            if not localpath.exists():
+                shutil.copy2( self.copy_dir / serverpath, localpath )
                 md5 = hashlib.md5()
                 with open( localpath, "rb" ) as ifp:
                     md5.update( ifp.read() )
@@ -370,7 +376,7 @@ class Archive:
                         localpath.unlink()
                     else:
                         raise RuntimeError( f"Local file {localpath} exists but md5sum doesn't match "
-                                            f"{serverpath} on server; local={localmd5}, server={md5sum}" )
+                                            f"{serverpath} on archive; local={localmd5}, server={md5sum}" )
 
             # If we get this far and localpath exists, we know we're done
             if not localpath.exists():
