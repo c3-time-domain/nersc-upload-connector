@@ -1,6 +1,8 @@
 import logging
 import hashlib
 import pathlib
+import requests
+import json
 import shutil
 import time
 import re
@@ -58,7 +60,7 @@ class Archive:
         
         self.logger = logger
         self.url = archive_url
-        if ( self.url is not None ) and ( self.url[-1] = '/' ):
+        if ( self.url is not None ) and ( self.url[-1] == '/' ):
             self.url = self.url[:-1]
         self.path_base = pathlib.Path( path_base )
         self.token = token
@@ -66,9 +68,9 @@ class Archive:
         self.verify_cert = verify_cert
         
     # ======================================================================
-o
+
     def _retry_request( self, endpoint, data={}, files=None, isjson=True, downloadfile=None,
-                        retries=5, sleeptime=2, verify=self.verify_cert ):
+                        retries=5, sleeptime=2 ):
         """Send a request to the archive server with retries.
 
         endpoint - the part of the URL after self.url
@@ -92,18 +94,18 @@ o
         if ( not isjson ) and ( downloadfile is None ):
             raise RuntimeError( "isjson is false, and downloadfile is None... I don't know what to do with {url}" )
             
-        retries = 5
+        countdown = retries
         while countdown >= 0:
             try:
-                res = requests.post( f"{url}", data=data, files=files, verify=verify )
+                res = requests.post( f"{url}", data=data, files=files, verify=self.verify_cert )
                 if res.status_code != 200:
-                    raise RuntimeError( f"Got status_code={res.status_code} from {url} for {localpath.name}" )
+                    raise RuntimeError( f"Got status_code={res.status_code} from {url} with data {data}" )
                 if isjson:
                     if res.headers['content-type'] != 'application/json':
                         raise RuntimeError( f"Server returned {res.headers['content-type']}, expected json" )
                     resval = json.loads( res.text )
                     if "error" in resval:
-                        raise RuntimeError( f"Got error response {resval['error']} from {url} for {localpath.name}\n"
+                        raise RuntimeError( f"Got error response {resval['error']} from {url} with data {data}\n"
                                             f"{resval['traceback'] if 'traceback' in resval else '(No traceback)'}" )
                     return resval
                 elif downloadfile is not None:
@@ -120,19 +122,19 @@ o
                 countdown -= 1
                 if countdown >= 0:
                     self.logger.warning( f"Exception trying {url} with data={data}; "
-                                         f"will sleep {timeout}s and retry; "
+                                         f"will sleep {sleeptime}s and retry; "
                                          f"Exception: {str(e)}" )
                     try:
                         res.close()
                     except Exception as junk:
                         pass
-                    time.sleep( timeout )
+                    time.sleep( sleeptime )
                 else:
                     try:
                         res.close()
                     except Exception as junk:
                         pass
-                    raise RuntimeError( "Repeated exceptions trying archive url {url}" )
+                    raise RuntimeError( f"Repeated exceptions trying archive url {url}" )
 
     
     # ======================================================================
@@ -242,7 +244,7 @@ o
                      "md5sum": md5.hexdigest() }
 
         else:
-            data = { "path": str( self.path_base / serverpath ) }
+            data = { "path": str( self.path_base / serverpath ), "token": self.token }
             try:
                 res = self._retry_request( "getfileinfo", data=data )
                 return res
@@ -260,6 +262,37 @@ o
 
         raise RuntimeError( "This should never happen." )
             
+    # ======================================================================
+
+    def delete( self, serverpath, okifmissing=True ):
+        """Delete a file in the archive
+
+        serverpath - path of file to delete relative to self.path_base
+        okifmissing - if False, then raise an exception if the file isn't there
+        
+        returns True if it thinks it worked, otherwise raises an exception
+        """
+
+        if self.copy_dir is not None:
+            archivepath = self.copy_dir / self.path_base / serverpath
+            if archivepath.exists():
+                if not archivepath.is_file():
+                    raise RuntimeError( f"Archive file {archivepath} exists but is not a regular file!" )
+                archivepath.unlink()
+            elif not okifmissing:
+                raise FileNotFoundError( f"Can't delete archive file {archivepath}, it doesn't exist." )
+
+        if self.url is not None:
+            archivepath = self.path_base / serverpath
+            data = { "path": str(archivepath),
+                     "token": self.token,
+                     "overwrite": True,
+                     "okifmissing": okifmissing
+                    }
+            self._retry_request( "delete", data=data )
+
+        return True
+    
     # ======================================================================
 
     def download( self, serverpath, localpath, verifymd5=False, clobbermismatch=True ):
@@ -329,9 +362,9 @@ o
 
         if not finished:
             data = { "path": str(serverpath), "token": self.token }
+            resval = self._retry_request( f"getfileinfo", data=data )
+            md5sum = resval['md5sum']
             if localmd5 is not None:
-                resval = self._retry_request( f"getfileinfo", data=data )
-                md5sum = resval['md5sum']
                 if localmd5 != md5sum:
                     if clobbermismatch:
                         localpath.unlink()
@@ -351,4 +384,4 @@ o
                     raise RuntimeError( f"Failed to download archive file {serverpath} to {localpath}; "
                                         f"local md5sum {md5.hexdigest()} did not match server's {md5sum}" )
 
-    return True
+        return True

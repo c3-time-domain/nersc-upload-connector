@@ -11,7 +11,7 @@ services:
       timeout: 10s
       retries: 5
     volumes:
-      archive-storage:/dest
+      - archive-storage:/dest
     secrets:
       - connector_tokens
 
@@ -23,8 +23,17 @@ services:
     build:
       context: ./
       dockerfile: Dockerfile
-
+    volumes:
+      - local-storage:/local_archive
+      - ../:/archive
+    secrets:
+      - connector_tokens
+    entrypoint: [ "tail", "-f", "/etc/issue" ]
+      
 secrets:
   connector_tokens:
     file: connector_tokens.txt
-    
+
+volumes:
+  archive-storage:
+  local-storage:

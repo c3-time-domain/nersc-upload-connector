@@ -200,10 +200,13 @@ class DeleteFile(UploadConnector):
             if not data["overwrite"]:
                 raise Failure( f"Not deleting file, overwrite is False" )
             if not data["path"].exists():
-                raise Failure( f"File doesn't exist: {str(data['path'])}" )
-            if data["path"].is_dir():
-                raise Failure( f"{str(data['path'])} is a directory" )
-            data["path"].unlink()
+                if ( "okifmissing" not in data ) or ( not data["okifmissing"] ):
+                    raise Failure( f"Failed to delete file that doesn't exist: {str(data['path'])}" )
+            else:
+                if data["path"].is_dir():
+                    raise Failure( f"{str(data['path'])} is a directory" )
+                else:
+                    data["path"].unlink()
             return json.dumps(
                 {
                     "status": "File deleted",

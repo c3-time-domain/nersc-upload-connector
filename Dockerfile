@@ -8,7 +8,7 @@ SHELL ["/bin/bash", "-c"]
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get upgrade -y \
-    && apt-get install -y less python3 python3-pip apache2 libapache2-mod-wsgi-py3 libcap2-bin net-tools lynx \
+    && apt-get install -y less python3 python3-pip apache2 libapache2-mod-wsgi-py3 libcap2-bin net-tools netcat lynx \
     && apt-get clean \
     && rm -rf /var/apt/lists/*
 RUN /sbin/setcap 'cap_net_bind_service=+ep' /usr/sbin/apache2
