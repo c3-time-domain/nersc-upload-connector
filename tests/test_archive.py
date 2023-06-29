@@ -168,21 +168,29 @@ class TestRemoteArchive(ArchiveTestBase):
                         verify_cert=False,
                         copy_dir=None )
 
-    @pytest.fixture(scope='class')
-    def bad_token_archive( self ):
-        return Archive( archive_url='http://archive-server:8080/',
-                        path_base='test1',
-                        token='this_is_not_the_right_token',
-                        verify_cert=False,
-                        copy_dir=None )
-    
-    def test_bad_token( self, bad_token_archive ):
+    def test_bad_token( self ):
+        bad_token_archive = Archive( archive_url='http://archive-server:8080/',
+                                     path_base='test1',
+                                     token='this_is_not_the_right_token',
+                                     verify_cert=False,
+                                     copy_dir=None )
         try:
             info = bad_token_archive.get_info( 'thing/this_file_does_not_exist_because_it_has_not_been_created' )
             assert False, "An exception should have been raised"
         except Exception as ex:
             assert str(ex) == "Invalid token for archive server"
-        
+
+    def test_bad_url_archive( self ):
+        bad_url_archive = Archive( archive_url='http://this-is-a-server-that-really-should-not-exist:12345/',
+                                   path_base='test1',
+                                   token='this_is_not_the_right_token',
+                                   verify_cert=False,
+                                   copy_dir=None )
+        try:
+            info = bad_url_archive.get_info( 'thing/irrelevant' )
+            assert False, "An exception should have been raised"
+        except Exception as ex:
+            assert str(ex)[0:35] == "Repeated failures trying to post to"
 
 
 class TestLocalArchive(ArchiveTestBase):
