@@ -66,7 +66,7 @@ class ArchiveTestBase:
         serverpath = pathlib.Path( "thing" ) / filepath.name
         info = archive.get_info( serverpath )
         assert info is not None
-        assert info["serverpath"] == f"{self.serverpathbase}/test1/thing/{filepath.name}"
+        assert info["serverpath"] == f"{self.serverpathbase_ro}/test1/thing/{filepath.name}"
         assert info["size"] == 16
         assert info["md5sum"] == md5sum
 
@@ -149,7 +149,8 @@ class ArchiveTestBase:
 
 
 class TestRemoteArchive(ArchiveTestBase):
-    serverpathbase = "/dest"
+    serverpathbase = "/storage"
+    serverpathbase_ro = "/storage_ro"
     
     @pytest.fixture(scope='class')
     def tokens( self ):
@@ -165,15 +166,13 @@ class TestRemoteArchive(ArchiveTestBase):
         return Archive( archive_url='http://archive-server:8080/',
                         path_base='test1',
                         token=tokens['test1/'],
-                        verify_cert=False,
-                        copy_dir=None )
+                        verify_cert=False )
 
     def test_bad_token( self ):
         bad_token_archive = Archive( archive_url='http://archive-server:8080/',
                                      path_base='test1',
                                      token='this_is_not_the_right_token',
-                                     verify_cert=False,
-                                     copy_dir=None )
+                                     verify_cert=False )
         try:
             info = bad_token_archive.get_info( 'thing/this_file_does_not_exist_because_it_has_not_been_created' )
             assert False, "An exception should have been raised"
@@ -184,8 +183,7 @@ class TestRemoteArchive(ArchiveTestBase):
         bad_url_archive = Archive( archive_url='http://this-is-a-server-that-really-should-not-exist:12345/',
                                    path_base='test1',
                                    token='this_is_not_the_right_token',
-                                   verify_cert=False,
-                                   copy_dir=None )
+                                   verify_cert=False )
         try:
             info = bad_url_archive.get_info( 'thing/irrelevant' )
             assert False, "An exception should have been raised"
@@ -195,13 +193,36 @@ class TestRemoteArchive(ArchiveTestBase):
 
 class TestLocalArchive(ArchiveTestBase):
     serverpathbase = "/local_archive"
+    serverpathbase_ro = "/local_archive"
 
     @pytest.fixture(scope='class')
     def archive( self ):
         return Archive( archive_url=None,
                         path_base='test1',
-                        copy_dir='/local_archive' )
+                        local_read_dir=self.serverpathbase )
+    
+    def additional_test_upload( self, filepath, md5sum ):
+        md5 = hashlib.md5()
+        with open( pathlib.Path( "/local_archive/test1/thing" ) / filepath.name, "rb" ) as ifp:
+            md5.update( ifp.read() )
+        assert md5.hexdigest() == md5sum
 
+
+class TestLocalArchiveDiffReadWrite(ArchiveTestBase):
+    serverpathbase = "/local_archive"
+    serverpathbase_ro = "/local_archive_ro"
+
+    @pytest.fixture(scope='class')
+    def archive( self ):
+        return Archive( archive_url=None,
+                        path_base='test1',
+                        local_read_dir=self.serverpathbase_ro,
+                        local_write_dir=self.serverpathbase )
+
+    def test_cannot_write_to_ro( self ):
+        with pytest.raises( OSError ):
+            with open( f"{self.serverpathbase_ro}/junkfile", "wb" ) as ofp:
+                ofp.write( "This should never happen" )
     
     def additional_test_upload( self, filepath, md5sum ):
         md5 = hashlib.md5()

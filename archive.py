@@ -14,12 +14,12 @@ class Archive:
     the code at https://github.com/c3-time-domain/nersc-upload-connector.
 
     It usually only makes sense to have one of archive_url or
-    archive_copy_dir not None, though the code will merrily write to
+    local_read_dir not None, though the code will merrily write to
     both locations if both are given.  (For downloading, it will prefer
-    copy_dir over url if both are specified.)  The latter is intended as
+    local_read_dir over url if both are specified.)  The latter is intended as
     a performance boost when the archive server is writing to a disk
     that's locally accessible on the machine where this code is running.
-    (In that case, specifying both copy_dir and url will cause the file
+    (In that case, specifying both local_read_dir and url will cause the file
     to first be copied to the directory, and then sent to the archive
     server, which is redundant.)
 
@@ -34,7 +34,8 @@ class Archive:
                   path_base=None,
                   token=None,
                   verify_cert=False,
-                  copy_dir=None,
+                  local_read_dir=None,
+                  local_write_dir=None,
                   logger=logging.getLogger("main") ):
         """Construct an Archive object
 
@@ -42,21 +43,27 @@ class Archive:
         path_base - the base path, or "collection", that we're archiving to
         token - the token for the server that corresponds to path_base
         verify_cert - if False, don't bother verifying the server's SSL certificate (i.e. live dangerously)
-        copy_dir - a local directory that serves as the archive; path_base must be a subdirectory there
+        local_read_dir - a local directory that serves as the archive; path_base must be a subdirectory there.
+            This is the directory used for reading.  It is usually the same as local_write_dir, but they
+            might be different in case the same filesystem is mounted in two different ways such that
+            it's more efficient to read from one way of mounting it than another.
+        local_write_dir - See local_read_dir; if this is None, defaults to local_read_dir
         logger - a logging.Logger object (defaults to getting the "main" logger)
 
         It usually doesn't make sense to have both archive_url and
-        copy_dir not None, although the code will accept it.  On
-        get_info or download, it will use the copy_dir first.  On
-        upload, it will do *both*.  The usual use case for copy_dir is
+        local_read_dir not None, although the code will accept it.  On
+        get_info or download, it will use the local_read_dir first.  On
+        upload, it will do *both*.  The usual use case for local_read_dir is
         when this code is running where the filesystem that the archive
-        writes to is locally available.  In that case, if copy_dir and
+        writes to is locally available.  In that case, if local_read_dir and
         archive_url are both non-None, it will first copy the file, then
         send it through the upoad server, which is redundant.
 
         """
-        if ( copy_dir is None) and ( archive_url is None ):
-            raise ValueError( "Archive: one of copy_dir or archive_url must be non-None" )
+        if ( local_read_dir is None) and ( archive_url is None ):
+            raise ValueError( "Archive: one of local_read_dir or archive_url must be non-None" )
+        if local_write_dir is None:
+            local_write_dir = local_read_dir
         
         self.logger = logger
         self.url = archive_url
@@ -64,7 +71,8 @@ class Archive:
             self.url = self.url[:-1]
         self.path_base = pathlib.Path( path_base )
         self.token = token
-        self.copy_dir = None if copy_dir is None else pathlib.Path( copy_dir )
+        self.local_read_dir = None if local_read_dir is None else pathlib.Path( local_read_dir )
+        self.local_write_dir = None if local_write_dir is None else pathlib.Path( local_write_dir )
         self.verify_cert = verify_cert
         
     # ======================================================================
@@ -180,8 +188,8 @@ class Archive:
         localmd5 = md5.hexdigest()
         md5sum = None
 
-        if self.copy_dir is not None:
-            destpath = self.copy_dir / serverpath
+        if self.local_write_dir is not None:
+            destpath = self.local_write_dir / serverpath
             if destpath.exists():
                 if not destpath.is_file():
                     raise RuntimeError( f"Failed to copy to archive; {destpath} exists and isn't a normal file!" )
@@ -249,8 +257,8 @@ class Archive:
 
         """
 
-        if self.copy_dir is not None:
-            archivepath = self.copy_dir / self.path_base / serverpath
+        if self.local_read_dir is not None:
+            archivepath = self.local_read_dir / self.path_base / serverpath
             if not archivepath.exists():
                 return None
             if not archivepath.is_file():
@@ -279,8 +287,8 @@ class Archive:
         returns True if it thinks it worked, otherwise raises an exception
         """
 
-        if self.copy_dir is not None:
-            archivepath = self.copy_dir / self.path_base / serverpath
+        if self.local_write_dir is not None:
+            archivepath = self.local_write_dir / self.path_base / serverpath
             if archivepath.exists():
                 if not archivepath.is_file():
                     raise RuntimeError( f"Archive file {archivepath} exists but is not a regular file!" )
@@ -334,8 +342,8 @@ class Archive:
 
         finished = False
         
-        if self.copy_dir is not None:
-            srcpath = pathlib.Path( self.copy_dir ) / serverpath
+        if self.local_read_dir is not None:
+            srcpath = pathlib.Path( self.local_read_dir ) / serverpath
             if not srcpath.exists():
                 raise FileNotFoundError( "Could not find archive file {serverpath}" )
             md5 = hashlib.md5()
@@ -352,7 +360,7 @@ class Archive:
 
             # If we get this far and localfile exists, then we know we don't want to overwrite it
             if not localpath.exists():
-                shutil.copy2( self.copy_dir / serverpath, localpath )
+                shutil.copy2( self.local_read_dir / serverpath, localpath )
                 md5 = hashlib.md5()
                 with open( localpath, "rb" ) as ifp:
                     md5.update( ifp.read() )

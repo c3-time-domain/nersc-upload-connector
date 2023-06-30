@@ -10,8 +10,17 @@ services:
       interval: 5s
       timeout: 10s
       retries: 5
+    environment:
+      - CONNECTOR_READ_STORAGE=/storage_ro
+      - CONNECTOR_WRITE_STORAGE=/storage
     volumes:
-      - archive-storage:/dest
+      - type: volume
+        source: archive-storage
+        target: /storage
+      - type: volume
+        source: archive-storage
+        target: /storage_ro
+        read_only: true
     secrets:
       - connector_tokens
 
@@ -24,8 +33,16 @@ services:
       context: ./
       dockerfile: Dockerfile
     volumes:
-      - local-storage:/local_archive
-      - ../:/archive
+      - type: bind
+        source: ..
+        target: /archive
+      - type: volume
+        source: local-storage
+        target: /local_archive
+      - type: volume
+        source: local-storage
+        target: /local_archive_ro
+        read_only: true
     secrets:
       - connector_tokens
     entrypoint: [ "tail", "-f", "/etc/issue" ]

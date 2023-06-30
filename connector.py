@@ -35,7 +35,8 @@ class Failure(Exception):
 # ======================================================================
 
 class UploadConnector(object):
-    storage = pathlib.Path("/dest")
+    read_storage = pathlib.Path( os.getenv( "CONNECTOR_READ_STORAGE", "/dest" ) )
+    write_storage = pathlib.Path( os.getenv( "CONNECTOR_WRITE_STORAGE", "/dest" ) )
     
     def GET( self ):
         return self.do_the_things()
@@ -81,9 +82,11 @@ class UploadConnector(object):
             if not ok:
                 raise Failure( f"File {data['path']} is not in a known path." )
 
-            data["path"] = self.storage / data["path"]
+            data["readpath"] = self.read_storage / data["path"]
+            data["writepath"] = self.write_storage / data["path"]
             if data["targetoflink"] is not None:
-                data["targetoflink"] = self.storage / data["targetoflink"]
+                data["targetoflink"] = self.read_storage / data["targetoflink"]
+            del data["path"]
             return data
         except Failure as e:
             raise e
@@ -108,13 +111,13 @@ class GetFileInfo(UploadConnector):
         web.header( 'Content-Type', 'application/json' )
         try:
             data = self.init()
-            if not data["path"].is_file():
-                raise Failure( f'No such file {str(data["path"])}' )
+            if not data["readpath"].is_file():
+                raise Failure( f'No such file {str(data["readpath"])}' )
             md5 = hashlib.md5()
-            with open( data["path"], "rb" ) as ifp:
+            with open( data["readpath"], "rb" ) as ifp:
                 md5.update( ifp.read() )
-            stat = data["path"].stat()
-            retval = { "serverpath": str(data["path"]),
+            stat = data["readpath"].stat()
+            retval = { "serverpath": str(data["readpath"]),
                        "size": stat.st_size,
                        "md5sum": md5.hexdigest() }
             return json.dumps( retval )
@@ -133,11 +136,11 @@ class DownloadFile(UploadConnector):
     def do_the_things( self ):
         try:
             data = self.init()
-            if not data["path"].is_file():
-                raise Failure( f'No such file {str(data["path"])}' )
+            if not data["readpath"].is_file():
+                raise Failure( f'No such file {str(data["readpath"])}' )
             web.header( 'Content-Type', 'application/octet-stream' )
-            web.header( 'Content-Disposition', f'attachment; filename="{data["path"].name}"' )
-            with open( data["path"], "rb" ) as ifp:
+            web.header( 'Content-Disposition', f'attachment; filename="{data["readpath"].name}"' )
+            with open( data["readpath"], "rb" ) as ifp:
                 filedata = ifp.read()
             return filedata
         except Failure as ex:
@@ -158,27 +161,27 @@ class UploadFile(UploadConnector):
         web.header( 'Content-Type', 'application/json' )
         try:
             data = self.init()
-            if (not data["overwrite"]) and data["path"].exists():
-                raise Failure( f'File already exists: {str(data["path"])}' )
-            self.mkdir( data["path"].parent, data["dirmode"] )
-            with open(data["path"], "wb") as ofp:
+            if (not data["overwrite"]) and data["writepath"].exists():
+                raise Failure( f'File already exists: {str(data["writepath"])}' )
+            self.mkdir( data["writepath"].parent, data["dirmode"] )
+            with open(data["writepath"], "wb") as ofp:
                 ofp.write( data["fileinfo"].value )
             if data["mode"] is not None:
-                data["path"].chmod( int( data["mode"] ) )
+                data["writepath"].chmod( int( data["mode"] ) )
             md5 = hashlib.md5()
-            with open( data["path"], "rb" ) as ifp:
+            with open( data["writepath"], "rb" ) as ifp:
                 md5.update( ifp.read() )
             md5sum = md5.hexdigest()
             if "md5sum" in data and data["md5sum"] is not None:
                 if md5sum != data["md5sum"]:
-                    data["path"].unlink()
+                    data["writepath"].unlink()
                     raise Failure( f"md5sum of file {md5sum} doesn't match "
                                    f"passed md5sum {data['md5sum']}, file not written" )
             return json.dumps(
                 {
                     "status": "File uploaded",
-                    "filename": data["path"].name,
-                    "path": str(data["path"]),
+                    "filename": data["writepath"].name,
+                    "path": str(data["writepath"]),
                     "length": len( data["fileinfo"].value ),
                     "md5sum": md5sum
                 }
@@ -201,19 +204,19 @@ class DeleteFile(UploadConnector):
             data = self.init()
             if not data["overwrite"]:
                 raise Failure( f"Not deleting file, overwrite is False" )
-            if not data["path"].exists():
+            if not data["writepath"].exists():
                 if ( "okifmissing" not in data ) or ( not data["okifmissing"] ):
                     raise Failure( f"Failed to delete file that doesn't exist: {str(data['path'])}" )
             else:
-                if data["path"].is_dir():
+                if data["writepath"].is_dir():
                     raise Failure( f"{str(data['path'])} is a directory" )
                 else:
-                    data["path"].unlink()
+                    data["writepath"].unlink()
             return json.dumps(
                 {
                     "status": "File deleted",
-                    "filename": data["path"].name,
-                    "path": str(data["path"])
+                    "filename": data["writepath"].name,
+                    "path": str(data["writepath"])
                 }
             )
         except Failure as ex:
@@ -233,17 +236,17 @@ class MakeLink(UploadConnector):
         web.header( 'Content-Type', 'application/json' )
         try:
             data = self.init()
-            if (not data["overwrite"]) and data["path"].exists():
-                raise Failure( f'File already exists: {str(data["path"])}' )
-            self.mkdir( data["path"].parent, data["dirmode"] )
+            if (not data["overwrite"]) and data["writepath"].exists():
+                raise Failure( f'File already exists: {str(data["writepath"])}' )
+            self.mkdir( data["writepath"].parent, data["dirmode"] )
             if not data["targetoflnk"].exists():
                 raise Failure( f'Link target doesn\'t exist: {data["targetoflink"]}' )
-            data["path"].symlink_to( data["targetoflink"] )
+            data["writepath"].symlink_to( data["targetoflink"] )
             return json.dumps(
                 {
                     "status": "Link created",
                     "target": str(data["targetoflink"]),
-                    "link": str(data["path"])
+                    "link": str(data["writepath"])
                 }
             )
         except Failure as ex:
