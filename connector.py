@@ -37,6 +37,7 @@ class Failure(Exception):
 class UploadConnector(object):
     read_storage = pathlib.Path( os.getenv( "CONNECTOR_READ_STORAGE", "/dest" ) )
     write_storage = pathlib.Path( os.getenv( "CONNECTOR_WRITE_STORAGE", "/dest" ) )
+    secretdir = pathlib.Path( os.getenv( "CONNECTOR_SECRETS", "/run/secrets" ) )
     
     def GET( self ):
         return self.do_the_things()
@@ -54,7 +55,7 @@ class UploadConnector(object):
         try:
             regex = re.compile( "^([^ ]+) *(.*)$" )
             pathtokens = {}
-            with open("/run/secrets/connector_tokens") as ifp:
+            with open(f"{self.secretdir}/connector_tokens") as ifp:
                 lines = ifp.readlines()
                 for line in lines:
                     line = line.strip()
