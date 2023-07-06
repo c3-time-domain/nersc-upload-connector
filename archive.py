@@ -173,6 +173,7 @@ class Archive:
         Returns the md5sum of the file in the archive if succesful.  Raises an exception if not.
 
         """
+
         localpath = pathlib.Path( localpath )
         remotename = remotename if remotename is not None else localpath.name
         if remotedir is not None:
@@ -345,7 +346,7 @@ class Archive:
         if self.local_read_dir is not None:
             srcpath = pathlib.Path( self.local_read_dir ) / serverpath
             if not srcpath.exists():
-                raise FileNotFoundError( "Could not find archive file {serverpath}" )
+                raise FileNotFoundError( f"Could not find archive file {serverpath}" )
             md5 = hashlib.md5()
             with open( srcpath, "rb" ) as ifp:
                 md5.update( ifp.read() )
