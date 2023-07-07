@@ -11,6 +11,7 @@ import pathlib
 import traceback
 import logging
 import hashlib
+import shutil
 
 _logger = logging.getLogger(__name__)
 if not _logger.hasHandlers():
@@ -175,6 +176,7 @@ class UploadFile(UploadConnector):
             md5sum = md5.hexdigest()
             if "md5sum" in data and data["md5sum"] is not None:
                 if md5sum != data["md5sum"]:
+                    shutil.copy2( data["writepath"], data["writepath"].parent / f'{data["writepath"].name}.FAIL' )
                     data["writepath"].unlink()
                     raise Failure( f"md5sum of file {md5sum} doesn't match "
                                    f"passed md5sum {data['md5sum']}, file not written" )
