@@ -118,24 +118,28 @@ class Archive:
             else:
                 if res.status_code != 200:
                     self.logger.warning( f"Got status_code={res.status_code} from {url} with data {data}" )
-                if isjson:
+                elif isjson:
                     if res.headers['content-type'] != 'application/json':
                         self.logger.warning( f"Server returned {res.headers['content-type']}, expected json" )
                     else:
-                        resval = json.loads( res.text )
-                        if "error" in resval:
-                            if ( ( expectederror is not None) and
-                                 ( resval['error'][:len(expectederror)] == expectederror ) ):
-                                return None
-                            if resval['error'][0:13] == 'Invalid token':
-                                self.logger.error( f"Invalid token for {url}" )
-                                raise RuntimeError( f"Invalid token for archive server" )
-                            else:
-                                tb = resval['traceback'] if 'traceback' in resval else '(No traceback)'
-                                self.logger.warning( f"Got error response {resval['error']} from {url} "
-                                                     f"with data {data}\n{tb}" )
+                        try:
+                            resval = json.loads( res.text )
+                        except Exception as ex:
+                            self.logger.warning( f"Failed to load JSON from {res.text}" )
                         else:
-                            return resval
+                            if "error" in resval:
+                                if ( ( expectederror is not None) and
+                                     ( resval['error'][:len(expectederror)] == expectederror ) ):
+                                    return None
+                                if resval['error'][0:13] == 'Invalid token':
+                                    self.logger.error( f"Invalid token for {url}" )
+                                    raise RuntimeError( f"Invalid token for archive server" )
+                                else:
+                                    tb = resval['traceback'] if 'traceback' in resval else '(No traceback)'
+                                    self.logger.warning( f"Got error response {resval['error']} from {url} "
+                                                         f"with data {data}\n{tb}" )
+                            else:
+                                return resval
                 elif downloadfile is not None:
                     if res.headers['content-type'] != 'application/octet-stream':
                         self.logger.warning( f"Server returned {res.headers['content-type']}, "
@@ -219,7 +223,7 @@ class Archive:
                      "dirmode": 0o755,
                      "mode": 0o644,
                      "token": self.token,
-                     "md5sum": md5sum }
+                     "md5sum": localmd5 }
             ifp = open( localpath, "rb" )
             filedata = { "fileinfo": ifp }
             try:
@@ -310,7 +314,7 @@ class Archive:
     
     # ======================================================================
 
-    def download( self, serverpath, localpath, verifymd5=False, clobbermismatch=True ):
+    def download( self, serverpath, localpath, verifymd5=False, clobbermismatch=True, mkdir=True ):
         """Copy a file from the archive to local storage.
 
         serverpath - string or pathlib.Path, path relative to path_base on the server
@@ -322,12 +326,16 @@ class Archive:
           doesn't match the local file's mismatch, then if this is True,
           overwrite the local file with the one from the server;
           otherwise, raise an exception.
+        mkdir - If localpath's parent directory doesn't already exist, make it
+          (If you don't do this, it might error out.)
 
         Returns True if succesful, otherwise raises an exception.
         
         """
 
         localpath = pathlib.Path( localpath )
+        if mkdir:
+            localpath.parent.mkdir( parents=True, exist_ok=True )
         localmd5 = None
         if localpath.exists():
             if not localpath.is_file():
