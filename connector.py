@@ -166,8 +166,15 @@ class UploadFile(UploadConnector):
             if (not data["overwrite"]) and data["writepath"].exists():
                 raise Failure( f'File already exists: {str(data["writepath"])}' )
             self.mkdir( data["writepath"].parent, data["dirmode"] )
+            # if len( data["fileinfo"].value ) != data["size"]:
+            #     raise Failure( f'Length of data uploaded {len(data["fileinfo"].value)} does not match '
+            #                    f'expected size {data["size"]}' )
             with open(data["writepath"], "wb") as ofp:
                 ofp.write( data["fileinfo"].value )
+            archivesize = os.stat( data["writepath"] ).st_size
+            data["size"] = int( data["size"] )
+            if archivesize != data["size"]:
+                raise Failure( f'Size of written file {archivesize} doesn\'t match expected size {data["size"]}' )
             if data["mode"] is not None:
                 data["writepath"].chmod( int( data["mode"] ) )
             md5 = hashlib.md5()

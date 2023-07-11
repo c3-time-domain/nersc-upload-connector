@@ -6,6 +6,7 @@ import json
 import shutil
 import time
 import re
+import os
 
 class Archive:
     """A class for communcation with an archive.
@@ -188,6 +189,7 @@ class Archive:
         if not localpath.is_file():
             raise FileNotFoundError( f"Can't find file {localpath} to upload to archive!" )
         md5 = hashlib.md5()
+        localsize = os.stat( localpath ).st_size
         with open( localpath, "rb" ) as ifp:
             md5.update( ifp.read() )
         localmd5 = md5.hexdigest()
@@ -223,6 +225,7 @@ class Archive:
                      "dirmode": 0o755,
                      "mode": 0o644,
                      "token": self.token,
+                     "size": localsize,
                      "md5sum": localmd5 }
             ifp = open( localpath, "rb" )
             filedata = { "fileinfo": ifp }
