@@ -78,13 +78,13 @@ class Archive:
         
     # ======================================================================
 
-    def _retry_request( self, endpoint, data={}, files=None, isjson=True, downloadfile=None,
+    def _retry_request( self, endpoint, data={}, filepath=None, isjson=True, downloadfile=None,
                         retries=5, sleeptime=2, expectederror=None ):
         """Send a request to the archive server with retries.
 
         endpoint - the part of the URL after self.url
         data - post data; a dict that will be json encoded by passing it to the json= argument of requests.post
-        files - upload file info (passed to python requests with files=), or None (default)
+        filepath - path of file to upload, or None (default)
         isjson - true if we expect a json response, false otherwise (default True)
         downloadfile - path of binary file to download, or None if none is expected (default None)
         retries - number of times to retry if there's a communications failure (default 5)
@@ -110,10 +110,19 @@ class Archive:
             raise RuntimeError( "isjson is false, and downloadfile is None... I don't know what to do with {url}" )
             
         countdown = retries
+        ifp = None
         while countdown >= 0:
             res = None
             try:
+                ifp = None
+                files = None
+                if filepath is not None:
+                    ifp = open( filepath, "rb" )
+                    files = { "fileinfo": ifp }
                 res = requests.post( f"{url}", data=data, files=files, verify=self.verify_cert )
+                if ifp is not None:
+                    ifp.close()
+                    ifp = None
             except Exception as ex:
                 self.logger.warning( f"Got exception {ex} trying to contact {url} with data {data}" )
             else:
@@ -153,6 +162,8 @@ class Archive:
                     raise RuntimeError( "This should never happen." )
             finally:
                 try:
+                    if ifp is not None:
+                        ifp.close()
                     res.close()
                 except Exception:
                     pass
@@ -227,16 +238,11 @@ class Archive:
                      "token": self.token,
                      "size": localsize,
                      "md5sum": localmd5 }
-            ifp = open( localpath, "rb" )
-            filedata = { "fileinfo": ifp }
-            try:
-                resval = self._retry_request( f"upload", data=data, files=filedata,
-                                              expectederror='File already exists' )
-                if ( resval is None ) and ( not overwrite ):
-                    raise RuntimeError( f"Failed to upload, {serverpath} already exists on archive "
-                                        f"and overwrite was False" )
-            finally:
-                ifp.close()
+            resval = self._retry_request( f"upload", data=data, filepath=localpath,
+                                          expectederror='File already exists' )
+            if ( resval is None ) and ( not overwrite ):
+                raise RuntimeError( f"Failed to upload, {serverpath} already exists on archive "
+                                    f"and overwrite was False" )
             md5sum = resval['md5sum']
             if md5sum != localmd5:
                 raise RuntimeError( f"Failed to upload {localpath} to server {serverpath}; "
