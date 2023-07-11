@@ -2,9 +2,12 @@ version: "3.3"
 
 services:
   archive-server:
-    image: rknop/upload-connector
+    image: rknop/upload-connector:tests
     build:
       context: ../
+      args:
+        UID: 0
+        GID: 0
     healthcheck:
       test: netcat -w 1 localhost 8080 || exit 1
       interval: 5s
@@ -28,7 +31,7 @@ services:
     depends_on:
       archive-server:
         condition: service_healthy
-    image: rknop/upload-connector-test
+    image: rknop/upload-connector-test:tests
     build:
       context: ./
       dockerfile: Dockerfile
