@@ -178,15 +178,16 @@ class Archive:
                 
     # ======================================================================
         
-    def upload( self, localpath, remotedir=None, remotename=None, overwrite=True ):
+    def upload( self, localpath, remotedir=None, remotename=None, overwrite=True, md5=None ):
         """Upload/copy a file to the archive.
         
         localpath - path (string or pathlib.Path object) of the local file
         remotedir - The subdirectory (underneath self.path_base) where the file should live on the archive
         remotename - The name of the file on the archive (defaults to the filename part of localpath)
         overwrite - Boolean, should we overwrite the archive file if it already exists?
+        md5 - md5sum (hashlib.hash object) of the localpath.  If None, figures it out, otherwise, trusts the caller.
 
-        Returns the md5sum of the file in the archive if succesful.  Raises an exception if not.
+        Returns the md5sum hex digest of the file in the archive if succesful.  Raises an exception if not.
 
         """
 
@@ -199,10 +200,11 @@ class Archive:
 
         if not localpath.is_file():
             raise FileNotFoundError( f"Can't find file {localpath} to upload to archive!" )
-        md5 = hashlib.md5()
         localsize = os.stat( localpath ).st_size
-        with open( localpath, "rb" ) as ifp:
-            md5.update( ifp.read() )
+        if md5 is None:
+            md5 = hashlib.md5()
+            with open( localpath, "rb" ) as ifp:
+                md5.update( ifp.read() )
         localmd5 = md5.hexdigest()
         md5sum = None
 

@@ -149,8 +149,8 @@ class ArchiveTestBase:
 
 
 class TestRemoteArchive(ArchiveTestBase):
-    serverpathbase = "/storage"
-    serverpathbase_ro = "/storage_ro"
+    serverpathbase = "/storage/base"
+    serverpathbase_ro = "/storage_ro/base"
     
     @pytest.fixture(scope='class')
     def tokens( self ):
@@ -192,8 +192,8 @@ class TestRemoteArchive(ArchiveTestBase):
 
 
 class TestLocalArchive(ArchiveTestBase):
-    serverpathbase = "/local_archive"
-    serverpathbase_ro = "/local_archive"
+    serverpathbase = "/local_archive/base"
+    serverpathbase_ro = "/local_archive/base"
 
     @pytest.fixture(scope='class')
     def archive( self ):
@@ -203,14 +203,14 @@ class TestLocalArchive(ArchiveTestBase):
     
     def additional_test_upload( self, filepath, md5sum ):
         md5 = hashlib.md5()
-        with open( pathlib.Path( "/local_archive/test1/thing" ) / filepath.name, "rb" ) as ifp:
+        with open( pathlib.Path( "/local_archive/base/test1/thing" ) / filepath.name, "rb" ) as ifp:
             md5.update( ifp.read() )
         assert md5.hexdigest() == md5sum
 
 
 class TestLocalArchiveDiffReadWrite(ArchiveTestBase):
-    serverpathbase = "/local_archive"
-    serverpathbase_ro = "/local_archive_ro"
+    serverpathbase = "/local_archive/base"
+    serverpathbase_ro = "/local_archive_ro/base"
 
     @pytest.fixture(scope='class')
     def archive( self ):
@@ -226,6 +226,6 @@ class TestLocalArchiveDiffReadWrite(ArchiveTestBase):
     
     def additional_test_upload( self, filepath, md5sum ):
         md5 = hashlib.md5()
-        with open( pathlib.Path( "/local_archive/test1/thing" ) / filepath.name, "rb" ) as ifp:
+        with open( pathlib.Path( "/local_archive/base/test1/thing" ) / filepath.name, "rb" ) as ifp:
             md5.update( ifp.read() )
         assert md5.hexdigest() == md5sum
