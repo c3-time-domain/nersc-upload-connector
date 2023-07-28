@@ -1,7 +1,23 @@
 version: "3.3"
 
 services:
+  make-archive-directories:
+    image: rknop/upload-connector:tests
+    build:
+      context: ../
+      args:
+        UID: 0
+        GID: 0
+    volumes:
+      - type: volume
+        source: archive-storage
+        target: /storage
+    entrypoint: bash -c "mkdir /storage/base && chmod a+rwx /storage/base"
+        
   archive-server:
+    depends_on:
+      make-archive-directories:
+        condition: service_completed_successfully
     image: rknop/upload-connector:tests
     build:
       context: ../
@@ -14,8 +30,8 @@ services:
       timeout: 10s
       retries: 5
     environment:
-      - CONNECTOR_READ_STORAGE=/storage_ro
-      - CONNECTOR_WRITE_STORAGE=/storage
+      - CONNECTOR_READ_STORAGE=/storage_ro/base
+      - CONNECTOR_WRITE_STORAGE=/storage/base
     volumes:
       - type: volume
         source: archive-storage
@@ -49,7 +65,32 @@ services:
     secrets:
       - connector_tokens
     entrypoint: [ "tail", "-f", "/etc/issue" ]
-      
+
+  runtests:
+    depends_on:
+      archive-server:
+        condition: service_healthy
+    image: rknop/upload-connector-test:tests
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    volumes:
+      - type: bind
+        source: ..
+        target: /archive
+      - type: volume
+        source: local-storage
+        target: /local_archive
+      - type: volume
+        source: local-storage
+        target: /local_archive_ro
+        read_only: true
+    secrets:
+      - connector_tokens
+    working_dir: /archive/tests
+    entrypoint: [ "pytest", "-v" ]
+
+    
 secrets:
   connector_tokens:
     file: connector_tokens.txt

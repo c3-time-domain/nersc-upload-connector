@@ -20,5 +20,10 @@ ENV LANG en_US.UTF-8
 ENV LANGUAGE en_US:en
 ENV LC_ALL en_US.UTF-8
 
+RUN mkdir /storage
+RUN chmod a+rwx /storage
+RUN mkdir /storage_ro
+RUN chmod a+rx /storage_ro
+
 RUN mkdir /archive
 WORKDIR /archive
