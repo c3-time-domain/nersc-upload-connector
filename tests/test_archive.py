@@ -155,7 +155,7 @@ class TestRemoteArchive(ArchiveTestBase):
     @pytest.fixture(scope='class')
     def tokens( self ):
         tokens = {}
-        with open( "/run/secrets/connector_tokens" ) as ifp:
+        with open( "/secrets/connector_tokens" ) as ifp:
             for line in ifp:
                 them = line.strip().split()
                 tokens[them[0]] = them[1]

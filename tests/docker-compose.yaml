@@ -12,7 +12,10 @@ services:
       - type: volume
         source: archive-storage
         target: /storage
-    entrypoint: bash -c "mkdir /storage/base && chmod a+rwx /storage/base"
+    entrypoint: bash -c "
+         mkdir /storage/base &&
+         chmod a+rwx /storage/base
+       "
         
   archive-server:
     depends_on:

@@ -82,7 +82,8 @@ class UploadConnector(object):
                         ok = True
                         break
             if not ok:
-                raise Failure( f"File {data['path']} is not in a known path." )
+                raise Failure( f"File {data['path']} is not in a known path; "
+                               f"known paths: {pathtokens.keys()}" )
 
             data["readpath"] = self.read_storage / data["path"]
             data["writepath"] = self.write_storage / data["path"]

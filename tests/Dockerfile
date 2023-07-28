@@ -25,5 +25,7 @@ RUN chmod a+rwx /storage
 RUN mkdir /storage_ro
 RUN chmod a+rx /storage_ro
 
+RUN ln -s /run/secrets /secrets
+
 RUN mkdir /archive
 WORKDIR /archive
