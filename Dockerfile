@@ -15,9 +15,21 @@ RUN /sbin/setcap 'cap_net_bind_service=+ep' /usr/sbin/apache2
 
 RUN pip3 install web.py
 
-# This needs to get replaced with a bind mound at runtime
+# This is very annoying
+# docker-compose puts its secrets at /run/secrets
+#  * rancher kubectl (used on NERSC spin) doesn't allow you
+#  * to mount to /run/anything
+#  * as such, it's impossible to put secrets in the
+#    same directory for both, which makes testing irritating
+# As such, I set up the environment variable CONNECTOR_SECRETS
+#   in connector.py so I can reconfigure this at runtime.
+# But, make sure the actual things I use are ready.
+# The appropriate one should be replaced with a bind mount
+RUN mkdir /run/secrets
+RUN echo "testing testing" >> /run/secrets/connector_tokens
 RUN mkdir /secrets
 RUN echo "testing testing" >> /secrets/connector_tokens
+
 RUN mkdir /dest
 
 RUN ln -s ../mods-available/socache_shmcb.load /etc/apache2/mods-enabled/socache_shmcb.load
