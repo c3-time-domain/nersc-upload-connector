@@ -37,6 +37,7 @@ class Archive:
                   verify_cert=False,
                   local_read_dir=None,
                   local_write_dir=None,
+                  track_uploads=False,
                   logger=logging.getLogger("main") ):
         """Construct an Archive object
 
@@ -75,6 +76,9 @@ class Archive:
         self.local_read_dir = None if local_read_dir is None else pathlib.Path( local_read_dir )
         self.local_write_dir = None if local_write_dir is None else pathlib.Path( local_write_dir )
         self.verify_cert = verify_cert
+
+        self.track_uploads = track_uploads
+        self.all_uploads = []
         
     # ======================================================================
 
@@ -253,6 +257,9 @@ class Archive:
         if md5sum is None:
             raise RuntimeError( "This should never happen; md5sum is None at the end of Archive.upload(). "
                                 "An exception should already have been raised." )
+
+        if self.track_uploads:
+            self.all_uploads.append( str(serverpath) )
         return md5sum
     
     # ======================================================================
