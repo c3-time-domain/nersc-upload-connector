@@ -16,8 +16,9 @@ RUN /sbin/setcap 'cap_net_bind_service=+ep' /usr/sbin/apache2
 RUN pip3 install web.py
 
 # This needs to get replaced with a bind mound at runtime
-RUN mkdir /secrets
-RUN echo "testing testing" >> /secrets/connector_tokens
+RUN mkdir /run/secrets
+RUN echo "testing testing" >> /run/secrets/connector_tokens
+RUN ln -s /run/secrets /secrets
 RUN mkdir /dest
 
 RUN ln -s ../mods-available/socache_shmcb.load /etc/apache2/mods-enabled/socache_shmcb.load
