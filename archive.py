@@ -11,18 +11,11 @@ import os
 class Archive:
     """A class for communcation with an archive.
 
-    Supports two different archives: a local file, and a server running
-    the code at https://github.com/c3-time-domain/nersc-upload-connector.
-
-    It usually only makes sense to have one of archive_url or
-    local_read_dir not None, though the code will merrily write to
-    both locations if both are given.  (For downloading, it will prefer
-    local_read_dir over url if both are specified.)  The latter is intended as
-    a performance boost when the archive server is writing to a disk
-    that's locally accessible on the machine where this code is running.
-    (In that case, specifying both local_read_dir and url will cause the file
-    to first be copied to the directory, and then sent to the archive
-    server, which is redundant.)
+    Supports two different archives: a local directory, and a server
+    running the server code at
+    https://github.com/c3-time-domain/nersc-upload-connector.  Normally
+    you will only use one interface.  See __init__ for configuring where
+    the archive exists.
 
     Call upload() to push something to the archive, get_info() to get
     information about something on the archive, and download() to pull
@@ -38,34 +31,83 @@ class Archive:
                   local_read_dir=None,
                   local_write_dir=None,
                   logger=logging.getLogger("main") ):
-        """Construct an Archive object
+        """Construct an Archive object.
 
-        archive_url - URL of the server running the upload-connector code
-        path_base - the base path, or "collection", that we're archiving to
-        token - the token for the server that corresponds to path_base
-        verify_cert - if False, don't bother verifying the server's SSL certificate (i.e. live dangerously)
-        local_read_dir - a local directory that serves as the archive; path_base must be a subdirectory there.
-            This is the directory used for reading.  It is usually the same as local_write_dir, but they
-            might be different in case the same filesystem is mounted in two different ways such that
-            it's more efficient to read from one way of mounting it than another.
-        local_write_dir - See local_read_dir; if this is None, defaults to local_read_dir
-        logger - a logging.Logger object (defaults to getting the "main" logger)
+        Parameters
+        ----------
+          archive_url : str
+             The URL of the webap on the server running the
+             upload-connector code.  If None, then local_read_dir must
+             not be None.
 
-        It usually doesn't make sense to have both archive_url and
-        local_read_dir not None, although the code will accept it.  On
-        get_info or download, it will use the local_read_dir first.  On
-        upload, it will do *both*.  The usual use case for local_read_dir is
-        when this code is running where the filesystem that the archive
-        writes to is locally available.  In that case, if local_read_dir and
-        archive_url are both non-None, it will first copy the file, then
-        send it through the upoad server, which is redundant.
+          path_base : str
+             The base path, or "collection", that we're archiving to.
+             This is a path relative to the archive server's global
+             root.  It exists so that different instantiations of a
+             database can use the same archive server without confusing
+             their files.
+
+          token : str
+             The authentication token for the server that corresponds to
+             path_base
+
+          verify_cert : bool
+             If False, don't bother verifying the server's SSL
+             certificate (i.e. live dangerously).
+
+          local_read_dir : str
+             A locally-available directory that serves as the archive;
+             path_base must be a subdirectory there.  Files will be read
+             from here.  Should normally be None if archive_url is not
+             None.
+
+          local_write_dir : str
+             When using a local archive, the base directory to where all
+             archive files are written.  If passed as None (which will
+             usually be the case), the code will make it the same as
+             local_read_dir.  This option exists in case the system has
+             two different ways of getting at the filesystem, one that's
+             more efficient for reading (which is the case, for
+             instance, on NERSC CFS as of Jan. 2024.)
+
+          logger : logging.Logger
+             Defaults to getting the logger "main".
+
+        Configure the archive on instantiation to use the web server by
+        passing a non-None archive_url.  Configure the archive to use the
+        local filesystem by passing a non-None local_read_dir.
+
+        It usually only makes sense to have either archive_url, or
+        local_read_dir, set, but not both.  archive_url should work from
+        anywhere the archive web server is accessible.  local_read_dir and
+        local_write_dir are present as a potential performance boost in the
+        special case where the archive web server's storage directories are
+        mounted on the same machine as where the client Archive class is
+        running.
+
+        When uploading, if both archive_url and local_write_dir are set, the
+        code will write files to *both* locations.  In the case where the
+        archive server's storage directories are mounted on the client
+        machine, this means redudant writes, which is not what you want.
+
+        When downloading, if both archive_url and local_read_dir are set,
+        the archive will first try to get the file from local_read_dir, and
+        then if that fails, will go to the archive server specified in
+        archive_url to try to get the file.
+
+        (Normally, local_read_dir and local_write_dir are the same, and if
+        local_write_dir is None, it will be set to be local_read_dir.  The
+        reason they're two different things is in case there are two
+        different ways to access the same filesystem, one optimized for
+        reading; this is the case on the NERSC CFS filesystem as of Jan
+        2024.)
 
         """
         if ( local_read_dir is None) and ( archive_url is None ):
             raise ValueError( "Archive: one of local_read_dir or archive_url must be non-None" )
         if local_write_dir is None:
             local_write_dir = local_read_dir
-        
+
         self.logger = logger
         self.url = archive_url
         if ( self.url is not None ) and ( self.url[-1] == '/' ):
@@ -74,26 +116,53 @@ class Archive:
         self.token = token
         self.local_read_dir = None if local_read_dir is None else pathlib.Path( local_read_dir )
         self.local_write_dir = None if local_write_dir is None else pathlib.Path( local_write_dir )
+        if ( self.local_write_dir is None ) and ( self.local_read_dir is not None ):
+            self.local_write_dir = self.local_read_dir
         self.verify_cert = verify_cert
-        
+
     # ======================================================================
 
     def _retry_request( self, endpoint, data={}, filepath=None, isjson=True, downloadfile=None,
                         retries=5, sleeptime=2, expectederror=None ):
         """Send a request to the archive server with retries.
 
-        endpoint - the part of the URL after self.url
-        data - post data; a dict that will be json encoded by passing it to the json= argument of requests.post
-        filepath - path of file to upload, or None (default)
-        isjson - true if we expect a json response, false otherwise (default True)
-        downloadfile - path of binary file to download, or None if none is expected (default None)
-        retries - number of times to retry if there's a communications failure (default 5)
-        sleeptime - time to sleep (in seconds) after a failure before retrying (default 2)
-        expectederror - see below
+        Parameters
+        ----------
+          endpoint : string
+            The part of the URL after self.url
 
-        If succesful, will return the data structure loaded from the
-        returned json (if isjson is True) or True (if downloadfile is
-        not None).
+          data : dict
+            Post data; a dict that will be json encoded by passing it to
+            the json= argument of requests.post
+
+          filepath : pathlib.Path or str
+            Path of file to upload, or None (default).
+
+          isjson : bool
+            True if we expect a json response, false otherwise (default
+            True).
+
+          downloadfile : pathlib.Path or str
+            Path of binary file to download, or None if none is expected
+            (default None)
+
+          retries : int, default 5
+            Number of times to retry if there's a communications failure.
+
+          retries : int or float, default 2
+            Time to sleep (in seconds) after a failure before retrying.
+
+          expectederror : str
+            A string to match an error response from the server (not an
+            http error, but a succesful web request with an embedded
+            error messge).  If the message matches, this funtion won't
+            raise an Exception, but will return None.  (See below.)
+
+        Returns
+        -------
+          If succesful, will return the data structure loaded from the
+          returned json (if isjson is True) or True (if downloadfile is
+          not None).
 
         If the first try returns an error response (so, a valid return
         from the server, but with a json encoded dictionary that has an
@@ -101,14 +170,14 @@ class Archive:
         beginning of the value of the "error" field of the returned
         dictionary matches expectederror, returns None.
 
-        Otherwise, will raise an exception.
+        Otherwise, on repeated failures, will raise an exception.
 
         """
-        
+
         url = f"{self.url}/{endpoint}"
         if ( not isjson ) and ( downloadfile is None ):
             raise RuntimeError( "isjson is false, and downloadfile is None... I don't know what to do with {url}" )
-            
+
         countdown = retries
         ifp = None
         while countdown >= 0:
@@ -167,27 +236,47 @@ class Archive:
                     res.close()
                 except Exception:
                     pass
-                    
+
             # If we haven't returned, then it's an error of some sort, and we should keep counting down
             countdown -= 1
             if countdown >= 0:
                 self.logger.warning( f"Failed to post to {url} with data {data}; "
                                      f"will sleep {sleeptime}s and retry." )
+                time.sleep( sleeptime )
 
         raise RuntimeError( f"Repeated failures trying to post to {url} with data {data}" )
-                
+
     # ======================================================================
-        
+
     def upload( self, localpath, remotedir=None, remotename=None, overwrite=True, md5=None ):
         """Upload/copy a file to the archive.
-        
-        localpath - path (string or pathlib.Path object) of the local file
-        remotedir - The subdirectory (underneath self.path_base) where the file should live on the archive
-        remotename - The name of the file on the archive (defaults to the filename part of localpath)
-        overwrite - Boolean, should we overwrite the archive file if it already exists?
-        md5 - md5sum (hashlib.hash object) of the localpath.  If None, figures it out, otherwise, trusts the caller.
 
-        Returns the md5sum hex digest of the file in the archive if succesful.  Raises an exception if not.
+        Parameters
+        ---------
+          localpath : str or pathlib.Path
+            Path of the file on the local filesystem.
+
+          remotedir : str or pathlib.Path
+            Relative path (underneath self.path_base) of the directory
+            where the file should live on the archive.
+
+          remotename : str
+            The name of the file on the archive.  Defaults to the
+            filename part of localpath.
+
+          overwrite : bool, default True
+            Should we overwrite the archive file if it already exists?
+
+          md5 : hashlib.has
+            The md5sum of the the localpath.  If None, this function
+            will calculate it.  If not-None, this function trusts the
+            caller to have done it right.
+
+        Retruns
+        -------
+           md5sum : str
+             The md5sum hex digest of the file in the archive if
+             succesful.  (Raises an exception if not.)
 
         """
 
@@ -256,20 +345,26 @@ class Archive:
             raise RuntimeError( "This should never happen; md5sum is None at the end of Archive.upload(). "
                                 "An exception should already have been raised." )
         return md5sum
-    
+
     # ======================================================================
 
     def get_info( self, serverpath ):
         """Get information about a file on the server
 
-        serverpath - path on server relative to self.path_base (string or pathlib.Path object)
+        Parameters
+        ----------
+          serverpath : pathlib.Path or str
+            Path on server relative to self.path_base.
 
-        Returns None if the file isn't found on the archive.
+        Returns
+        -------
+          dict or None
+            Returns None if the file isn't found on the archive.
 
-        Otherwise, returns a dictionary with:
-           serverpath : absolute path of file on archive (string)
-           size : size of file on archive
-           md5sum : md5sum of file on archive
+            Otherwise, returns a dictionary with:
+              serverpath : absolute path of file on archive (string)
+              size : size of file on archive
+              md5sum : md5sum of file on archive
 
         """
 
@@ -291,16 +386,26 @@ class Archive:
             data = { "path": str( self.path_base / serverpath ), "token": self.token }
             res = self._retry_request( "getfileinfo", data=data, expectederror='No such file' )
             return res
-            
+
     # ======================================================================
 
     def delete( self, serverpath, okifmissing=True ):
         """Delete a file in the archive
 
-        serverpath - path of file to delete relative to self.path_base
-        okifmissing - if False, then raise an exception if the file isn't there
-        
-        returns True if it thinks it worked, otherwise raises an exception
+        Parameters
+        ----------
+          serverpath : pathlib.Path or str
+            Path of file relative to self.path_base to delete on the
+            archive server.
+
+          okifmissing : bool, default True
+            If False, then raise an exception if the file isn't present
+            on the archive.
+
+        Retruns
+        -------
+          True if it thinks it worked, otherwise raises an exception
+
         """
 
         if self.local_write_dir is not None:
@@ -322,26 +427,43 @@ class Archive:
             self._retry_request( "delete", data=data )
 
         return True
-    
+
     # ======================================================================
 
     def download( self, serverpath, localpath, verifymd5=False, clobbermismatch=True, mkdir=True ):
         """Copy a file from the archive to local storage.
 
-        serverpath - string or pathlib.Path, path relative to path_base on the server
-        localpath - string or pathlib.Path, absolute path to where file should be saved locally
-        verifymd5 - if False, and the file already exists locally, don't do anything.  If 
-           True, and the file already exists locally, will ask the archive for the corresponding
-           file's md5sum to compare to the local file's md5sum
-        clobbermismatch - if verifymd5 is True and the archive's md5sum
-          doesn't match the local file's mismatch, then if this is True,
-          overwrite the local file with the one from the server;
-          otherwise, raise an exception.
-        mkdir - If localpath's parent directory doesn't already exist, make it
-          (If you don't do this, it might error out.)
+        Parmaeters
+        ----------
+          serverpath : str or pathlib.Path
+            Path of file relative to self.path_base on the archive server.
 
-        Returns True if succesful, otherwise raises an exception.
-        
+          localpath : str or pathlib.Path
+            Absolute path where the file should be saved locally.
+
+          verifymd5 : bool, default False
+            If False, and the file already exists locally, don't do
+            anything.  If True, and the file already exists locally,
+            will ask the archive for the corresponding file's md5sum to
+            compare to the local file's md5sum.  Subsequent behavior
+            depends on the archive's response on the value of
+            clobbermismatch.
+
+          clobbermismatch : bool, default True
+            If verifymd5 is True and the archive's md5sum doesn't match
+            the local file's mismatch, then if this is True, overwrite
+            the local file with the one from the server; otherwise,
+            raise an exception.
+
+          mkdir : bool, default True
+            If localpath's parent directory doesn't already exist, make
+            it.  (If you set this to fall, the function might error
+            out.)
+
+        Returns
+        -------
+          True if succesful, otherwise raises an exception.
+
         """
 
         localpath = pathlib.Path( localpath )
@@ -357,11 +479,11 @@ class Archive:
             with open( localpath, "rb" ) as ifp:
                 md5.update( ifp.read() )
             localmd5 = md5.hexdigest()
-        
+
         serverpath = self.path_base / serverpath
 
         finished = False
-        
+
         if self.local_read_dir is not None:
             srcpath = pathlib.Path( self.local_read_dir ) / serverpath
             if not srcpath.exists():

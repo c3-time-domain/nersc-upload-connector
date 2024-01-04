@@ -55,12 +55,12 @@ class ArchiveTestBase:
     #  state of the system will no longer be what's expected
     def additional_test_upload( self, filepath, md5sum ):
         pass
-        
+
     def test_upload( self, localfile, upload ):
         contents, filepath, md5sum = localfile
         assert md5sum == upload
         self.additional_test_upload( filepath, md5sum )
-    
+
     def test_getinfo( self, archive, localfile, upload ):
         contents, filepath, md5sum = localfile
         serverpath = pathlib.Path( "thing" ) / filepath.name
@@ -104,7 +104,7 @@ class ArchiveTestBase:
             assert match is not None
         else:
             assert False, "An exception should have been raised"
-            
+
         filepath.unlink()
 
     def test_overwrite( self, archive, localfile, upload_and_overwrite ):
@@ -151,7 +151,7 @@ class ArchiveTestBase:
 class TestRemoteArchive(ArchiveTestBase):
     serverpathbase = "/storage/base"
     serverpathbase_ro = "/storage_ro/base"
-    
+
     @pytest.fixture(scope='class')
     def tokens( self ):
         tokens = {}
@@ -160,7 +160,7 @@ class TestRemoteArchive(ArchiveTestBase):
                 them = line.strip().split()
                 tokens[them[0]] = them[1]
         return tokens
-                
+
     @pytest.fixture(scope='class')
     def archive( self, tokens ):
         return Archive( archive_url='http://archive-server:8080/',
@@ -200,7 +200,10 @@ class TestLocalArchive(ArchiveTestBase):
         return Archive( archive_url=None,
                         path_base='test1',
                         local_read_dir=self.serverpathbase )
-    
+
+    def test_local_write_defaults_to_local_read( self, archive ):
+        assert archive.local_write_dir == archive.local_read_dir
+
     def additional_test_upload( self, filepath, md5sum ):
         md5 = hashlib.md5()
         with open( pathlib.Path( "/local_archive/base/test1/thing" ) / filepath.name, "rb" ) as ifp:
@@ -223,7 +226,7 @@ class TestLocalArchiveDiffReadWrite(ArchiveTestBase):
         with pytest.raises( OSError ):
             with open( f"{self.serverpathbase_ro}/junkfile", "wb" ) as ofp:
                 ofp.write( "This should never happen" )
-    
+
     def additional_test_upload( self, filepath, md5sum ):
         md5 = hashlib.md5()
         with open( pathlib.Path( "/local_archive/base/test1/thing" ) / filepath.name, "rb" ) as ifp:
