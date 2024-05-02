@@ -1,4 +1,4 @@
-FROM rknop/devuan-chimaera-rknop
+FROM rknop/devuan-daedalus-rknop AS base
 MAINTAINER Rob Knop <raknop@lbl.gov>
 
 ARG UID=95089
@@ -8,17 +8,38 @@ SHELL ["/bin/bash", "-c"]
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get upgrade -y \
-    && apt-get install -y less python3 python3-pip apache2 libapache2-mod-wsgi-py3 libcap2-bin net-tools netcat lynx \
+    && apt-get install -y less python3 python3-venv apache2 libapache2-mod-wsgi-py3 \
+       libcap2-bin net-tools netcat-openbsd lynx patch \
     && apt-get clean \
     && rm -rf /var/apt/lists/*
-RUN /sbin/setcap 'cap_net_bind_service=+ep' /usr/sbin/apache2
 
-RUN pip3 install web.py
+# ======================================================================
+# apt-getting pip installs a full dev environment, which we don't
+#   want in our final image.  (400 unnecessary MB.)
+
+FROM base AS build
+
+RUN apt-get update && apt-get install -y python3-pip
+
+RUN mkdir /venv
+RUN python3 -mvenv /venv
+
+RUN source /venv/bin/activate \
+  && pip install web.py
+
+# ======================================================================
+
+FROM base AS final
+
+COPY --from=build /venv/ /venv/
+ENV PATH=/venv/bin:$PATH
 
 # This needs to get replaced with a bind mound at runtime
 RUN mkdir /secrets
 RUN echo "testing testing" >> /secrets/connector_tokens
 RUN mkdir /dest
+
+RUN /sbin/setcap 'cap_net_bind_service=+ep' /usr/sbin/apache2
 
 RUN ln -s ../mods-available/socache_shmcb.load /etc/apache2/mods-enabled/socache_shmcb.load
 RUN ln -s ../mods-available/ssl.load /etc/apache2/mods-enabled/ssl.load

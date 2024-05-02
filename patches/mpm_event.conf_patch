@@ -1,18 +1,16 @@
---- mpm_event.conf	2021-10-04 11:17:45.830739425 -0700
-+++ mpm_event.conf.patched	2021-10-05 15:15:11.541585766 -0700
-@@ -7,11 +7,11 @@
+--- mpm_event.conf_orig	2024-05-02 09:22:33.066118362 -0700
++++ mpm_event.conf	2024-05-02 09:23:01.310569882 -0700
+@@ -6,9 +6,9 @@
+ # MaxRequestWorkers: maximum number of worker threads
  # MaxConnectionsPerChild: maximum number of requests a server process serves
- <IfModule mpm_event_module>
- 	StartServers			 2
--	MinSpareThreads		 25
--	MaxSpareThreads		 75
-+	MinSpareThreads		 128
-+	MaxSpareThreads		 196
- 	ThreadLimit			 64
--	ThreadsPerChild		 25
--	MaxRequestWorkers	  150
-+	ThreadsPerChild		 16
-+	MaxRequestWorkers	  256
- 	MaxConnectionsPerChild   0
- </IfModule>
- 
+ StartServers            2
+-MinSpareThreads         25
+-MaxSpareThreads         75
++MinSpareThreads         128
++MaxSpareThreads         196
+ ThreadLimit             64
+-ThreadsPerChild         25
+-MaxRequestWorkers       150
++ThreadsPerChild         16
++MaxRequestWorkers       256
+ MaxConnectionsPerChild  0
