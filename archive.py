@@ -30,6 +30,8 @@ class Archive:
                   verify_cert=False,
                   local_read_dir=None,
                   local_write_dir=None,
+                  sleeptime=2,
+                  retries=5,
                   logger=logging.getLogger("main") ):
         """Construct an Archive object.
 
@@ -69,6 +71,12 @@ class Archive:
              two different ways of getting at the filesystem, one that's
              more efficient for reading (which is the case, for
              instance, on NERSC CFS as of Jan. 2024.)
+
+          sleeptime : int or float, default 2
+            Time to sleep (in seconds) after a failure before retrying.
+
+          retries : int, default 5
+            Number of times to retry if there's a communications failure.
 
           logger : logging.Logger
              Defaults to getting the logger "main".
@@ -118,12 +126,14 @@ class Archive:
         self.local_write_dir = None if local_write_dir is None else pathlib.Path( local_write_dir )
         if ( self.local_write_dir is None ) and ( self.local_read_dir is not None ):
             self.local_write_dir = self.local_read_dir
+        self.sleeptime = sleeptime
+        self.retries = retries
         self.verify_cert = verify_cert
 
     # ======================================================================
 
     def _retry_request( self, endpoint, data={}, filepath=None, isjson=True, downloadfile=None,
-                        retries=5, sleeptime=2, expectederror=None ):
+                        retries=None, sleeptime=None, expectederror=None ):
         """Send a request to the archive server with retries.
 
         Parameters
@@ -146,10 +156,10 @@ class Archive:
             Path of binary file to download, or None if none is expected
             (default None)
 
-          retries : int, default 5
+          retries : int, default configured at object init
             Number of times to retry if there's a communications failure.
 
-          retries : int or float, default 2
+          sleeptime : int or float, default configure at object init
             Time to sleep (in seconds) after a failure before retrying.
 
           expectederror : str
@@ -178,6 +188,8 @@ class Archive:
         if ( not isjson ) and ( downloadfile is None ):
             raise RuntimeError( "isjson is false, and downloadfile is None... I don't know what to do with {url}" )
 
+        sleeptime = sleeptime if sleeptime is not None else self.sleeptime
+        retries = retries if retries is not None else self.retries
         countdown = retries
         ifp = None
         while countdown >= 0:
