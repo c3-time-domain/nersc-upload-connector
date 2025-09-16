@@ -27,7 +27,7 @@ class Archive:
                   archive_url=None,
                   path_base=None,
                   token=None,
-                  verify_cert=False,
+                  verify_cert=True,
                   local_read_dir=None,
                   local_write_dir=None,
                   sleeptime=2,
