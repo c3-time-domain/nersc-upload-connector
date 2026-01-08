@@ -1,4 +1,4 @@
-FROM rknop/devuan-chimaera-rknop
+FROM debian:trixie-20251229 AS base
 MAINTAINER Rob Knop <raknop@lbl.gov>
 
 SHELL ["/bin/bash", "-c"]
@@ -10,7 +10,6 @@ RUN apt-get update && apt-get upgrade -y \
   && rm -rf /var/apt/lists/*
 
 RUN ln -s /usr/bin/python3 /usr/bin/python
-RUN ln -s /usr/bin/pytest-3 /usr/bin/pytest
 
 # Generate UTF8 locale
 RUN cat /etc/locale.gen | perl -pe 's/^# en_US.UTF-8/en_US.UTF-8/' > /etc/locale.gen_new \

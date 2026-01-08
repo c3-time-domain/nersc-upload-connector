@@ -1,5 +1,3 @@
-version: "3.3"
-
 services:
   make-archive-directories:
     image: rknop/upload-connector:tests
@@ -12,7 +10,7 @@ services:
       - type: volume
         source: archive-storage
         target: /storage
-    entrypoint: bash -c "mkdir /storage/base && chmod a+rwx /storage/base"
+    entrypoint: bash -c "mkdir -p /storage/base && chmod a+rwx /storage/base"
         
   archive-server:
     depends_on:

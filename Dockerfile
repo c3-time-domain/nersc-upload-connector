@@ -1,6 +1,12 @@
-FROM rknop/devuan-daedalus-rknop AS base
+# Trixie doesn't work because it goes to python 3.13, which removes cgi, which web.py depends on
+# TODO: rewrite this all to use flask.  web.py is no longer maintained, it seems.
+FROM debian:bookworm-20251229 AS base
 MAINTAINER Rob Knop <raknop@lbl.gov>
 
+# These next two are what's needed to run as raknop on NERSC.
+# If somebody else is isntalling this, they will need to specify
+#   a different UID/GID.  (It's possible they can do this all at runtime
+#   with an init-container or something like that.)
 ARG UID=95089
 ARG GID=45703
 
